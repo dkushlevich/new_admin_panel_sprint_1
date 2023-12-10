@@ -76,6 +76,7 @@ ignore = [
     "A003",   # builtin shadowing in attributes
     "RUF001",
     "RUF003",
+    "S101",
     "D203",   # 1 blank line required before class docstring
     "ARG002", # Unused method argument
     "TRY003", # Avoid specifying long messages outside the exception class

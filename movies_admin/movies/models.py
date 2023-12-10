@@ -17,9 +17,8 @@ class PersonRole(models.TextChoices):
 
 
 class TimeStampedMixin(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    created = models.DateTimeField(_("creation time"), auto_now_add=True)
-    modified = models.DateTimeField(_("modification time"), auto_now=True)
+    created_at = models.DateTimeField(_("creation time"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("modification time"), auto_now=True)
 
     class Meta:
         abstract=True
@@ -58,13 +57,23 @@ class Person(UUIDMixin, TimeStampedMixin):
 class FilmWork(UUIDMixin, TimeStampedMixin):
     title = models.CharField(_("name"), max_length=255)
     description = models.TextField(_("description"), blank=True)
-    creation_date = models.DateField(_("release date"))
+    creation_date = models.DateField(
+        _("release date"),
+        blank=True,
+        null=True,
+    )
+    file_path = models.FileField(
+        _("file"),
+        blank=True,
+        null=True,
+        upload_to="movies/",
+    )
     rating = models.FloatField(
         _("rating"),
         blank=True,
         validators=[
             MinValueValidator(0),
-            MaxValueValidator(100),
+            MaxValueValidator(10),
         ],
     )
     type = models.CharField(
@@ -107,11 +116,21 @@ class GenreFilmWork(UUIDMixin, TimeStampedMixin):
         verbose_name=_("genre"),
     )
 
-    modified = None
+    updated_at = None
 
     class Meta:
         db_table = "content\".\"genre_film_work" # noqa: Q003
+        verbose_name = _("film genre")
+        verbose_name_plural = _("film genres")
+        unique_together = ("genre", "film_work")
 
+    def __str__(self):
+        return _(
+            "Film %(film_work)s genre %(genre)s.",
+        ) % {
+            "film_work": self.film_work.title,
+            "genre": self.genre.name,
+        }
 
 class PersonFilmWork(UUIDMixin, TimeStampedMixin):
 
@@ -134,7 +153,17 @@ class PersonFilmWork(UUIDMixin, TimeStampedMixin):
         default=PersonRole.ACTOR,
     )
 
-    modified = None
+    updated_at = None
 
     class Meta:
         db_table = "content\".\"person_film_work" # noqa: Q003
+        verbose_name = _("film person")
+        verbose_name_plural = _("film pesons")
+
+    def __str__(self):
+        return _(
+            "Film %(film_work)s person %(person)s.",
+        ) % {
+            "film_work": self.film_work.title,
+            "person": self.person.full_name,
+        }
