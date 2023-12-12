@@ -192,7 +192,7 @@ if __name__ == "__main__":
     logger.setLevel(logging.INFO)
     logger.addHandler(file_handler)
 
-    logger.info("Script is running")
+    logger.info("Script running")
 
     db_path = (Path(__file__).resolve().parent / SQLITE_DB_NAME)
 
@@ -267,4 +267,4 @@ if __name__ == "__main__":
             )
 
     finally:
-        logger.info("Скрипт завершил работу")
+        logger.info("Script done")
