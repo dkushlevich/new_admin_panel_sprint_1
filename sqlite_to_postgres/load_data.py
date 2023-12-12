@@ -120,11 +120,11 @@ def load_from_sqlite_to_postgresql(
     for table_name in TABLE_NAMES_DATACLASSES:
         data_to_write[table_name] = sqlite_extractor.extract_data(table_name)
 
-    logger.info("Данные успешно извлечены из базы данных SQLite")
+    logger.info("SQLite reading success")
     row_count_restrict = int(ROW_COUNT_RESRICT)
     postgres_saver.save_all_data(data_to_write, row_count_restrict)
 
-    logger.info("Данные успешно записаны в базу данных PostgreSQL")
+    logger.info("PostgeSQL write data success")
 
 
 def check_db_file_exists(db_path: str):
@@ -192,7 +192,7 @@ if __name__ == "__main__":
     logger.setLevel(logging.INFO)
     logger.addHandler(file_handler)
 
-    logger.info("Скрипт запущен")
+    logger.info("Script is running")
 
     db_path = (Path(__file__).resolve().parent / SQLITE_DB_NAME)
 
@@ -201,16 +201,16 @@ if __name__ == "__main__":
         check_variables()
         check_row_count_restrict_type()
     except FileNotFoundError:
-        logger.exception("Файл с базой данных SQLite не найден")
+        logger.exception("SQLite database file not found")
     except ValueError:
-        logger.exception("Ошибка переменной окружения")
+        logger.exception("Environment variable error")
     else:
         try:
             with sqlite3.connect(db_path) as sqlite_conn, psycopg2.connect(
                 **DSL, cursor_factory=DictCursor,
             ) as pg_conn:
                 logger.info(
-                    "Соединение с SQLite и PostgreSQL установлено",
+                    "SQLite and PostgreSQL connect success",
                 )
 
                 try:
@@ -225,7 +225,7 @@ if __name__ == "__main__":
                         table_names,
                     )
                     test_load_data()
-                    logger.info("Тесты прошли успешно")
+                    logger.info("Tests passed")
 
                     pg_conn.commit()
 
@@ -242,30 +242,28 @@ if __name__ == "__main__":
                 finally:
                     pg_conn.autocommit = True
 
-            logger.info("Соединение с SQLite и PostgreSQL закрыто")
+            logger.info("Databases connectin close")
 
         except psycopg2.Error:
-            logger.exception("Ошибка подключения к базе данных PostgreSQL")
+            logger.exception("PostgreSQL connection error")
 
         except sqlite3.Error:
-            logger.exception("Ошибка подключения к базе данных SQLite")
+            logger.exception("SQLite connection error")
 
         except SQLiteReadError:
-            logger.exception("Ошибка считывания данных из базы SQLite")
+            logger.exception("SQLite reading error")
 
         except DataClassConversionError:
             logger.exception(
-                "Ошибка преобразования считанных данных в "
-                "объекты классов данных",
+                "Readed data dataclass conversion failed",
             )
 
         except PostgreSQLWriteError:
-            logger.exception("Ошибка записи данных в базу PostgreSQL")
+            logger.exception("PostgreSQL write data error")
 
         except AssertionError:
             logger.exception(
-                "Тесты выявили несоответствие, база PostgreSQL "
-                "возвращена в исходный вид",
+                "Tests failed",
             )
 
     finally:
