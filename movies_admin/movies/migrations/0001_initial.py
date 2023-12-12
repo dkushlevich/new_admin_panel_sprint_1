@@ -67,7 +67,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('created_at', models.DateTimeField(auto_now_add=True, verbose_name='creation time')),
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('role', models.CharField(choices=[('actor', 'actor'), ('director', 'director'), ('writer', 'writer')], default='actor', max_length=8, verbose_name='Роль')),
+                ('role', models.CharField(choices=[('actor', 'actor'), ('director', 'director'), ('writer', 'writer')], default='actor', max_length=8, verbose_name='role')),
                 ('film_work', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='person_film_works', to='movies.filmwork', verbose_name='film work')),
                 ('person', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='person_film_works', to='movies.person', verbose_name='person')),
             ],
