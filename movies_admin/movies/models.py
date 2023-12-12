@@ -49,6 +49,7 @@ class Person(UUIDMixin, TimeStampedMixin):
         db_table = "content\".\"person"  # noqa: Q003
         verbose_name = _("person")
         verbose_name_plural = _("persons")
+        ordering = ("full_name", )
 
     def __str__(self):
         return self.full_name
