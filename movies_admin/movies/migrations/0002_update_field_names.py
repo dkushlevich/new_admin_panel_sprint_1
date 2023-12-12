@@ -38,6 +38,8 @@ class Migration(migrations.Migration):
                 
                 ALTER TABLE "content"."person_film_work"
                 RENAME COLUMN created TO created_at;
+                
+                DROP INDEX IF EXISTS film_work_person_idx;
             '''
             ),
             reverse_sql=('''
@@ -64,6 +66,8 @@ class Migration(migrations.Migration):
                 
                 ALTER TABLE "content"."person_film_work"
                 RENAME COLUMN created_at TO created;
+
+                CREATE UNIQUE INDEX film_work_person_idx ON content.person_film_work (film_work_id, person_id);
             '''
             )
         )
