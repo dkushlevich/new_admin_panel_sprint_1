@@ -7,7 +7,7 @@ from pathlib import Path
 
 import psycopg2
 from psycopg2.extensions import connection as _connection
-from psycopg2.extras import DictCursor
+from psycopg2.extras import execute_batch
 from dotenv import load_dotenv
 
 from exceptions import (
@@ -15,6 +15,7 @@ from exceptions import (
     PostgreSQLWriteError,
     SQLiteReadError,
 )
+from managers import open_sqlite_db, open_postgres_db
 from models import (
     FilmWork,
     Genre,
@@ -27,7 +28,7 @@ from tests import TestLoadData
 
 load_dotenv()
 
-ROW_COUNT_RESRICT: str | None = os.getenv("ROW_COUNT_RESTRICT")
+BATCH_SIZE: str | None = os.getenv("BATCH_SIZE")
 
 SQLITE_DB_NAME: str = os.getenv("SQLITE_DB_NAME")
 
@@ -55,19 +56,33 @@ class SQLiteExtractor:
 
     def extract_data(self, table_name: str):
         """Считывает данные из базы SQLite."""
-        self.connection.row_factory = sqlite3.Row
-        cursor = self.connection.cursor()
-        sql_query = f"SELECT * FROM {table_name};"  # noqa: S608
-        try:
-            cursor.execute(sql_query)
-        except sqlite3.Error as exc:
-            raise SQLiteReadError() from exc  # noqa: RSE102
-        data = cursor.fetchall()
         dataclass = TABLE_NAMES_DATACLASSES.get(table_name)
-        try:
-            return [dataclass(**dict(row_data)) for row_data in data]
-        except TypeError as exc:
-            raise DataClassConversionError() from exc  # noqa: RSE102
+        current_position = 0
+
+        while True:
+            self.connection.row_factory = sqlite3.Row
+            cursor = self.connection.cursor()
+            sql_query = f"""
+                SELECT * FROM {table_name}
+                LIMIT {BATCH_SIZE}
+                OFFSET {current_position};
+            """  # noqa: S608
+
+            try:
+                cursor.execute(sql_query)
+            except sqlite3.Error as exc:
+                raise SQLiteReadError() from exc  # noqa: RSE102
+            data = cursor.fetchall()
+
+            if not data:
+                break
+
+            try:
+                yield [dataclass(**dict(row_data)) for row_data in data]
+            except TypeError as exc:
+                raise DataClassConversionError() from exc  # noqa: RSE102
+
+            current_position += int(BATCH_SIZE)
 
 
 class PostgresSaver:
@@ -75,37 +90,28 @@ class PostgresSaver:
     def __init__(self, pg_connection: _connection):
        self.pg_connection = pg_connection
 
-    def save_all_data(self, data: dict, row_count_restrict: int | None=None):
+    def save_all_data(self, data: dict, table_name: str):
         """Сохраняет данные в базу PostgreSQL."""
-        for table_name in TABLE_NAMES_DATACLASSES:
-            table_data = data.get(table_name)
 
-            if not table_data:
-                continue
+        column_names = [field.name for field in fields(data[0])]
+        column_names_str = ",".join(column_names)
+        col_count = ", ".join(["%s"] * len(column_names))
 
-            column_names = [field.name for field in fields(table_data[0])]
-            column_names_str = ",".join(column_names)
-            col_count = ", ".join(["%s"] * len(column_names))
+        pg_cursor = self.pg_connection.cursor()
 
-            if not row_count_restrict:
-                row_count_restrict = len(table_data)
+        bind_values = ",".join(pg_cursor.mogrify(
+            f"({col_count})",
+            astuple(row)).decode("utf-8") for row in data
+        )
+        query = (
+            f"INSERT INTO {table_name} ({column_names_str}) VALUES "  # noqa: S608
+            f"{bind_values} ON CONFLICT (id) DO NOTHING"
+        )
 
-            pg_cursor = self.pg_connection.cursor()
-
-            for i in range(0, len(table_data), row_count_restrict):
-                split_data = table_data[i:i + row_count_restrict]
-                bind_values = ",".join(pg_cursor.mogrify(
-                    f"({col_count})",
-                    astuple(row)).decode("utf-8") for row in split_data
-                )
-                query = (
-                    f"INSERT INTO {table_name} ({column_names_str}) VALUES "  # noqa: S608
-                    f"{bind_values} ON CONFLICT (id) DO NOTHING"
-                )
-                try:
-                    pg_cursor.execute(query)
-                except sqlite3.Error as exc:
-                    raise PostgreSQLWriteError() from exc  # noqa: RSE102
+        try:
+            execute_batch(pg_cursor, query, [])
+        except sqlite3.Error as exc:
+            raise PostgreSQLWriteError() from exc  # noqa: RSE102
 
 
 def load_from_sqlite_to_postgresql(
@@ -116,13 +122,12 @@ def load_from_sqlite_to_postgresql(
     postgres_saver = PostgresSaver(pg_connection)
     sqlite_extractor = SQLiteExtractor(connection)
 
-    data_to_write = {}
     for table_name in TABLE_NAMES_DATACLASSES:
-        data_to_write[table_name] = sqlite_extractor.extract_data(table_name)
 
-    logger.info("SQLite reading success")
-    row_count_restrict = int(ROW_COUNT_RESRICT)
-    postgres_saver.save_all_data(data_to_write, row_count_restrict)
+        for data in sqlite_extractor.extract_data(table_name):
+            postgres_saver.save_all_data(data, table_name)
+
+        logger.info(f"Transfer data for table {table_name} success")
 
     logger.info("PostgeSQL write data success")
 
@@ -139,6 +144,7 @@ def check_variables():
     """Проверяет доступность необходимых переменных окружения."""
     variables = {
         "SQLITE_DB_NAME": SQLITE_DB_NAME,
+        "BATCH_SIZE": BATCH_SIZE,
         "DB_NAME": DSL.get("dbname"),
         "DB_USER": DSL.get("user"),
         "DB_PASSWORD": DSL.get("password"),
@@ -155,18 +161,17 @@ def check_variables():
         )
 
 
-def check_row_count_restrict_type():
+def check_batch_size_type():
     """Проверяет корректность типа переменной окружения
-    ROW_COUNT_RESTRICT.
+    BATCH_SIZE.
     """
-    if ROW_COUNT_RESRICT:
-        try:
-            int(ROW_COUNT_RESRICT)
-        except ValueError as exc:
-            raise ValueError(
-                "Неверный тип переменной ROW_COUNT_RESRICT. "
-                f"Невозможно преобразовать {ROW_COUNT_RESRICT} в int",
-            ) from exc
+    try:
+        int(BATCH_SIZE)
+    except ValueError as exc:
+        raise ValueError(
+            "Неверный тип переменной BATCH_SIZE. "
+            f"Невозможно преобразовать {BATCH_SIZE} в int",
+        ) from exc
 
 
 if __name__ == "__main__":
@@ -199,22 +204,22 @@ if __name__ == "__main__":
     try:
         check_db_file_exists(db_path)
         check_variables()
-        check_row_count_restrict_type()
+        check_batch_size_type()
     except FileNotFoundError:
         logger.exception("SQLite database file not found")
     except ValueError:
         logger.exception("Environment variable error")
     else:
         try:
-            with sqlite3.connect(db_path) as sqlite_conn, psycopg2.connect(
-                **DSL, cursor_factory=DictCursor,
-            ) as pg_conn:
+            with (
+                open_sqlite_db(db_path) as sqlite_conn,
+                open_postgres_db(DSL) as pg_conn,
+            ):
                 logger.info(
                     "SQLite and PostgreSQL connect success",
                 )
 
                 try:
-                    pg_conn.autocommit = False
 
                     load_from_sqlite_to_postgresql(sqlite_conn, pg_conn)
 
@@ -227,22 +232,17 @@ if __name__ == "__main__":
                     test_load_data()
                     logger.info("Tests passed")
 
-                    pg_conn.commit()
 
                 except SQLiteReadError as exc:
                     raise SQLiteReadError from exc
                 except DataClassConversionError as exc:
                     raise DataClassConversionError from exc
                 except PostgreSQLWriteError as exc:
-                    pg_conn.rollback()
                     raise PostgreSQLWriteError from exc
                 except AssertionError as exc:
-                    pg_conn.rollback()
                     raise AssertionError from exc
-                finally:
-                    pg_conn.autocommit = True
 
-            logger.info("Databases connectin close")
+            logger.info("Databases connection closed")
 
         except psycopg2.Error:
             logger.exception("PostgreSQL connection error")
@@ -254,17 +254,13 @@ if __name__ == "__main__":
             logger.exception("SQLite reading error")
 
         except DataClassConversionError:
-            logger.exception(
-                "Readed data dataclass conversion failed",
-            )
+            logger.exception("Readed data dataclass conversion failed")
 
         except PostgreSQLWriteError:
             logger.exception("PostgreSQL write data error")
 
         except AssertionError:
-            logger.exception(
-                "Tests failed",
-            )
+            logger.exception("Tests failed")
 
     finally:
-        logger.info("Script done")
+        logger.info("Script completed")
