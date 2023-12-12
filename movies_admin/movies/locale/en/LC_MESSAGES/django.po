@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-12-10 18:44+0000\n"
+"POT-Creation-Date: 2023-12-12 04:35+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -113,6 +113,10 @@ msgstr ""
 #: movies/models.py:129
 #, python-format
 msgid "Film %(film_work)s genre %(genre)s."
+msgstr ""
+
+#: movies/models.py:150
+msgid "role"
 msgstr ""
 
 #: movies/models.py:160

@@ -147,7 +147,7 @@ class PersonFilmWork(UUIDMixin, TimeStampedMixin):
         verbose_name=_("person"),
     )
     role = models.CharField(
-        "Роль",
+        _("role"),
         max_length=max(len(role) for role, _ in PersonRole.choices),
         choices=PersonRole.choices,
         default=PersonRole.ACTOR,
